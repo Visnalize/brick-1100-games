@@ -121,6 +121,6 @@ window.bridge.on("numpress", handleKeyPress);
 window.bridge.send(window.parent, {
   event: "loadAudio",
   data: ["pop.mp3", "over.mp3"].map(function (src) {
-    return location.origin + "/audio/" + src;
+    return location.origin + "/tic-tac-toe/audio/" + src;
   }),
 });
