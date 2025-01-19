@@ -20,3 +20,5 @@ To make your game's interface fit seamlessly into Brick 1100, there's a [Bridge 
 Once your pull request is merged, your game will show up at `https://brick1100-games.visnalize.com/<your-game>`, and you can then access it from Brick 1100.
 
 ## Game list
+
+> See the [Index page](https://brick1100-games.visnalize.com).
