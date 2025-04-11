@@ -58,12 +58,12 @@
 }
 
 .menu ul li.active span {
-  background: var(--c-black-alpha);
-  color: var(--c-green);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 #screen-game {
-  color: var(--c-black-alpha);
+  color: var(--background);
   font-size: 10vh;
 }
 
@@ -76,14 +76,14 @@
 
 .timer,
 .moves {
-  box-shadow: inset 0 0 0 1vh var(--c-black);
+  box-shadow: inset 0 0 0 1vh var(--background);
   text-align: center;
 }
 
 #game {
   align-self: center;
   display: grid;
-  border: 1vh solid var(--c-black);
+  border: 1vh solid var(--background);
   margin: 0 auto;
   width: 90vh;
   height: 90vh;
@@ -102,12 +102,12 @@
   align-items: center;
   justify-content: center;
   user-select: none;
-  background: var(--c-black-alpha);
-  border: 1vh dotted var(--c-green);
+  background: var(--background);
+  border: 1vh dotted var(--foreground);
   border-top: 0;
   border-left: 0;
   box-sizing: border-box;
-  color: var(--c-green);
+  color: var(--foreground);
   width: 100%;
   height: 100%;
 }
@@ -117,9 +117,9 @@
 }
 
 .cell.input {
-  background: var(--c-green);
-  border-color: var(--c-black-alpha);
-  color: var(--c-black-alpha);
+  background: var(--foreground);
+  border-color: var(--background);
+  color: var(--background);
 }
 
 .cell.right {
@@ -132,18 +132,18 @@
 
 @keyframes blink {
   0% {
-    color: var(--c-black-alpha);
-    background: var(--c-green);
-    border-color: var(--c-black-alpha);
+    color: var(--background);
+    background: var(--foreground);
+    border-color: var(--background);
   }
   50% {
-    color: var(--c-green);
-    background: var(--c-black-alpha);
-    border-color: var(--c-green);
+    color: var(--foreground);
+    background: var(--background);
+    border-color: var(--foreground);
   }
   100% {
-    color: var(--c-black-alpha);
-    background: var(--c-green);
-    border-color: var(--c-black-alpha);
+    color: var(--background);
+    background: var(--foreground);
+    border-color: var(--background);
   }
 }
