@@ -10,13 +10,13 @@
   grid-template-columns: repeat(3, 1fr);
   width: 94vh;
   margin: auto;
-  border: 1vh solid var(--foreground);
+  border: 1vh solid var(--background);
 }
 
 .cell {
   width: 100%;
   height: 30vh;
-  border: 1vh solid var(--foreground);
+  border: 1vh solid var(--background);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -24,7 +24,7 @@
 }
 
 .cell.active {
-  background: var(--foreground);
+  background: var(--background);
   color: var(--foreground);
 }
 
