@@ -1,125 +1,72 @@
-var README =
-  "https://github.com/Visnalize/brick-1100-games/tree/main/sudoku/README.md";
+var ui = window.bridge.ui;
 var LEVELS = [
   { size: 4, boxWidth: 2, boxHeight: 2, name: "Easy" },
   { size: 6, boxWidth: 2, boxHeight: 3, name: "Medium" },
   { size: 9, boxWidth: 3, boxHeight: 3, name: "Hard" },
 ];
-var MAIN_ITEM = {
+var INSTRUCTIONS =
+  "Fill the grid so that every row, column and box has each digit once. " +
+  "Up and down move between empty cells. Number keys fill a cell, 0 empties it " +
+  "and # empties the whole grid.";
+var MENU_ITEM = {
   GAME: 0,
   LEVEL: 1,
   INSTRUCTIONS: 2,
 };
 
-/** @type {'main' | 'level' | 'game'} */
-var activeScreen = "main";
 /** @type {Sudoku} */
 var currentGame = null;
-/** @type {Menu} */
-var menu = null;
+var selectedLevel = 0;
 
-var Menu = function () {
-  this.selectedLevel = 0;
-  this.selectedItem = 0;
-  this.setup();
-};
-
-Menu.prototype.setup = function () {
-  var self = this;
-
-  // Setup level menu items
-  var levelsList = document.getElementById("levels");
-  LEVELS.forEach(function (level, index) {
-    var li = document.createElement("li");
-    var span = document.createElement("span");
-    span.textContent = level.name;
-    li.appendChild(span);
-    if (index === self.selectedLevel) {
-      li.classList.add("active");
-    }
-    levelsList.appendChild(li);
-  });
-};
-
-Menu.prototype.handleMenuKeys = function (key) {
-  var items = document.querySelectorAll("#screen-" + activeScreen + " li");
-
-  if (items.length > 0) {
-    items[this.selectedItem].classList.remove("active");
-  }
-
-  if (key === "up") {
-    this.selectedItem = (this.selectedItem - 1 + items.length) % items.length;
-  } else if (key === "down") {
-    this.selectedItem = (this.selectedItem + 1) % items.length;
-  } else if (key === "ok") {
-    this.handleSelection();
-  } else if (key === "clear") {
-    if (activeScreen === "level") {
-      this.returnToMainMenu(1); // Return to Level option
-    } else if (activeScreen === "main") {
+function openMenu(selectedItem) {
+  ui.list({
+    title: "Sudoku",
+    items: ["New game", "Level", "Instructions"],
+    index: selectedItem,
+    onSelect: function (index, screen) {
+      if (index === MENU_ITEM.GAME) {
+        screen.close();
+        startGame();
+      }
+      if (index === MENU_ITEM.LEVEL) openLevels();
+      if (index === MENU_ITEM.INSTRUCTIONS) {
+        ui.text({ title: "Instructions", text: INSTRUCTIONS });
+      }
+    },
+    onBack: function () {
       window.bridge.send(window.parent, { event: "stop" });
-    }
-  }
+    },
+  });
+}
 
-  if (items[this.selectedItem]) {
-    items[this.selectedItem].classList.add("active");
-  }
-};
+function openLevels() {
+  ui.list({
+    title: "Level",
+    items: LEVELS.map(function (level) {
+      return level.name;
+    }),
+    index: selectedLevel,
+    onSelect: function (index, screen) {
+      selectedLevel = index;
+      screen.close();
+    },
+  });
+}
 
-Menu.prototype.handleSelection = function () {
-  if (activeScreen === "main") {
-    if (this.selectedItem === MAIN_ITEM.GAME) {
-      this.startGame();
-    } else if (this.selectedItem === MAIN_ITEM.LEVEL) {
-      this.showScreen("level");
-      this.selectedItem = this.selectedLevel;
-      this.updateActiveMenuItem("level", this.selectedLevel);
-    } else if (this.selectedItem === MAIN_ITEM.INSTRUCTIONS) {
-      window.open(README, "_blank");
-    }
-  } else if (activeScreen === "level") {
-    this.selectedLevel = this.selectedItem;
-    this.returnToMainMenu(1);
-  }
-};
-
-Menu.prototype.showScreen = function (screenName) {
-  document.getElementById("screen-" + activeScreen).hidden = true;
-  activeScreen = screenName;
-  document.getElementById("screen-" + activeScreen).hidden = false;
-};
-
-Menu.prototype.startGame = function () {
+function startGame() {
   if (currentGame) {
     currentGame.cleanup();
   }
 
-  this.showScreen("game");
-  var gameLevel = LEVELS[this.selectedLevel];
+  document.getElementById("screen-game").hidden = false;
+  var gameLevel = LEVELS[selectedLevel];
   currentGame = new Sudoku({
-    level: this.selectedLevel,
+    level: selectedLevel,
     size: gameLevel.size,
     boxWidth: gameLevel.boxWidth,
     boxHeight: gameLevel.boxHeight,
   });
-};
-
-Menu.prototype.returnToMainMenu = function (selectedItem) {
-  this.showScreen("main");
-  this.selectedItem = selectedItem || 0;
-  this.updateActiveMenuItem("main", this.selectedItem);
-};
-
-Menu.prototype.updateActiveMenuItem = function (screen, index) {
-  var items = document.querySelectorAll("#screen-" + screen + " li");
-  items.forEach(function (item) {
-    item.classList.remove("active");
-  });
-  if (items[index]) {
-    items[index].classList.add("active");
-  }
-};
+}
 
 var Sudoku = function (config) {
   // Game state
@@ -343,7 +290,7 @@ Sudoku.prototype.handleGameKeys = function (key) {
   }
 
   if (key === "clear") {
-    menu.returnToMainMenu();
+    openMenu(MENU_ITEM.GAME);
     return;
   }
 
@@ -466,20 +413,15 @@ Sudoku.prototype.checkWin = function () {
   }
 };
 
+// The menu screens take the keys while they are open, so these only run during a game.
 function handleKeypress(key) {
-  if (activeScreen === "game" && currentGame) {
-    currentGame.handleGameKeys(key);
-  } else {
-    menu.handleMenuKeys(key);
-  }
+  if (currentGame) currentGame.handleGameKeys(key);
 }
 
 function handleNumpress(key) {
-  if (activeScreen === "game" && currentGame) {
-    currentGame.handleGameNumKeys(key);
-  }
+  if (currentGame) currentGame.handleGameNumKeys(key);
 }
 
-menu = new Menu();
+openMenu(MENU_ITEM.GAME);
 window.bridge.on("keypress", handleKeypress);
 window.bridge.on("numpress", handleNumpress);
