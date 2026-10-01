@@ -1,5 +1,4 @@
 var board = document.getElementById("board");
-var result = document.getElementById("result");
 
 var currentPlayer = "X";
 var gridSize = 3;
@@ -19,8 +18,6 @@ var winningConditions = [
 
 function init() {
   board.innerHTML = "";
-  board.hidden = false;
-  result.hidden = true;
   currentPlayer = "X";
   gameState.fill(null);
   cursor = [0, 0];
@@ -69,9 +66,19 @@ function hasWinner() {
 }
 
 function showResult(message) {
-  result.textContent = message + " Press 0 to restart.";
-  result.hidden = false;
-  board.hidden = true;
+  window.bridge.ui.confirm({
+    text: message,
+    action: "Again",
+    onDone: function (screen) {
+      screen.close();
+      init();
+    },
+    onBack: stop,
+  });
+}
+
+function stop() {
+  window.bridge.send(window.parent, { event: "stop" });
 }
 
 function playAudio(audioId) {
@@ -111,7 +118,7 @@ function handleKeyPress(key) {
   if (key === 8) moveCursor("down");
   if (key === "up") moveCursor("prev");
   if (key === "down") moveCursor("next");
-  if (key === "clear") window.bridge.send(window.parent, { event: "stop" });
+  if (key === "clear") stop();
 }
 
 init();

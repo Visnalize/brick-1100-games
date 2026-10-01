@@ -8,3 +8,4 @@ A simple Tic Tac Toe game built for Brick 1100.
 - Use the arrow keys or the number keys (`2`, `4`, `6`, `8`) to move the cursor.
 - Press `OK` to place your mark.
 - Press `0` to restart the game.
+- When a game ends, press `OK` to play again, or `C` to leave.
