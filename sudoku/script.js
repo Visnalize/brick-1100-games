@@ -41,6 +41,11 @@ function playAudio(audioId) {
   window.bridge.send(window.parent, { event: "playAudio", data: audioId });
 }
 
+// Tells the phone a round has ended, as its result opens. The phone may show an ad at this moment.
+function sendGameOver() {
+  window.bridge.send(window.parent, { event: "progress", data: { type: "over" } });
+}
+
 function openMenu() {
   var items = [MENU.GAME, MENU.LEVEL, MENU.INSTRUCTIONS];
   if (currentGame && !currentGame.solved) items.unshift(MENU.CONTINUE);
@@ -269,6 +274,7 @@ Sudoku.prototype.finish = function () {
 
   // The solved grid stays on screen for a moment before the result covers it
   setTimeout(function () {
+    sendGameOver();
     ui.confirm({
       text: "Solved!",
       info: formatTime(self.elapsed) + ", " + self.moves + " moves",

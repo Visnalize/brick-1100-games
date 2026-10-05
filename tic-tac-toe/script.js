@@ -113,6 +113,11 @@ function playAudio(audioId) {
   window.bridge.send(window.parent, { event: "playAudio", data: audioId });
 }
 
+// Tells the phone a round has ended, as its result opens. The phone may show an ad at this moment.
+function sendGameOver() {
+  window.bridge.send(window.parent, { event: "progress", data: { type: "over" } });
+}
+
 function hasMarks() {
   return gameState.some(function (cell) {
     return cell !== null;
@@ -146,6 +151,7 @@ function findWinningLine() {
 }
 
 function showResult(message) {
+  sendGameOver();
   ui.confirm({
     text: message,
     action: "Again",
