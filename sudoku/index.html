@@ -12,15 +12,8 @@
 </head>
 
 <body>
-  <div id="screen-game" class="screen" hidden>
-    <div class="game-info">
-      <div>Sudoku</div>
-      <div>#<span id="level">1</span></div>
-      <div class="timer">00:00</div>
-      <div class="moves">000</div>
-    </div>
-    <div id="game"></div>
-  </div>
+  <!-- The grid is drawn on the phone's 96 x 65 LCD pixels, see script.js -->
+  <canvas id="game"></canvas>
 
   <script src="https://unpkg.com/bridge-1100/dist/index.umd.js"></script>
   <script src="script.js"></script>
