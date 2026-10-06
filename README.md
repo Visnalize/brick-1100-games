@@ -19,16 +19,6 @@ To make your game's interface fit seamlessly into Brick 1100, there's a [Bridge 
 
 Once your pull request is merged, your game will show up at `https://brick1100-games.visnalize.com/<your-game>`, and you can then access it from Brick 1100.
 
-## When a round ends
-
-Send a `progress` event with `{ type: "over" }` when a round ends and your result screen opens, as
-`sudoku` and `tic-tac-toe` do. Brick 1100 counts it as a game over, as it does for its own games,
-and may show an ad at that moment.
-
-```js
-window.bridge.send(window.parent, { event: "progress", data: { type: "over" } });
-```
-
 ## Game list
 
 > See the [Index page](https://brick1100-games.visnalize.com).
