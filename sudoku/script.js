@@ -1,41 +1,69 @@
 var ui = window.bridge.ui;
+var lcd = window.bridge.lcd;
+
+// Each level's grid fits the 65-pixel height: `cell` is the space inside a cell, in LCD pixels, and
+// `scale` the size of its digits (1 is the 3 x 5 font). A 9 x 9 cell is too small for lines between
+// cells, which would sit a pixel from its digits and read as colons, so it has only box edges and
+// a dot in each empty cell.
 var LEVELS = [
-  { size: 4, boxWidth: 2, boxHeight: 2, name: "Easy" },
-  { size: 6, boxWidth: 2, boxHeight: 3, name: "Medium" },
-  { size: 9, boxWidth: 3, boxHeight: 3, name: "Hard" },
+  { name: "Easy", size: 4, boxWidth: 2, boxHeight: 2, holes: 0.55, cell: 14, scale: 2 },
+  { name: "Medium", size: 6, boxWidth: 3, boxHeight: 2, holes: 0.55, cell: 9, scale: 1 },
+  { name: "Hard", size: 9, boxWidth: 3, boxHeight: 3, holes: 0.65, cell: 6, scale: 1, dots: true },
 ];
 var INSTRUCTIONS =
   "Fill the grid so that every row, column and box has each digit once. " +
-  "Up and down move between empty cells. Number keys fill a cell, 0 empties it " +
-  "and # empties the whole grid.";
-var MENU_ITEM = {
-  GAME: 0,
-  LEVEL: 1,
-  INSTRUCTIONS: 2,
-};
+  "Up and down move between the cells you can fill. Number keys fill a cell, 0 empties it " +
+  "and # empties the whole grid. C opens the menu, where you can continue.";
+var MENU = { CONTINUE: "Continue", GAME: "New game", LEVEL: "Level", INSTRUCTIONS: "Instructions" };
+var WIDTH = 96;
+var HEIGHT = 65;
+var BLINK_MS = 450;
+
+// Pictures for drawPixels, beside the digits of lcd.drawText
+var HASH = [".#.#.", "#####", ".#.#.", "#####", ".#.#."];
+var COLON = ["#", "."];
+
+var canvas = document.getElementById("game");
+var ctx = canvas.getContext("2d");
+canvas.width = WIDTH;
+canvas.height = HEIGHT;
+lcd.fit(canvas, WIDTH, HEIGHT);
 
 /** @type {Sudoku} */
 var currentGame = null;
 var selectedLevel = 0;
 
-function openMenu(selectedItem) {
+function stop() {
+  window.bridge.send(window.parent, { event: "stop" });
+}
+
+function playAudio(audioId) {
+  window.bridge.send(window.parent, { event: "playAudio", data: audioId });
+}
+
+// Tells the phone a round has ended, as its result opens. The phone may show an ad at this moment.
+function sendGameOver() {
+  window.bridge.send(window.parent, { event: "progress", data: { type: "over" } });
+}
+
+function openMenu() {
+  var items = [MENU.GAME, MENU.LEVEL, MENU.INSTRUCTIONS];
+  if (currentGame && !currentGame.solved) items.unshift(MENU.CONTINUE);
+
   ui.list({
     title: "Sudoku",
-    items: ["New game", "Level", "Instructions"],
-    index: selectedItem,
+    items: items,
     onSelect: function (index, screen) {
-      if (index === MENU_ITEM.GAME) {
+      var item = items[index];
+      if (item === MENU.CONTINUE) screen.close();
+      if (item === MENU.GAME) {
         screen.close();
-        startGame();
+        currentGame = new Sudoku(LEVELS[selectedLevel], 1);
       }
-      if (index === MENU_ITEM.LEVEL) openLevels();
-      if (index === MENU_ITEM.INSTRUCTIONS) {
-        ui.text({ title: "Instructions", text: INSTRUCTIONS });
-      }
+      if (item === MENU.LEVEL) openLevels();
+      if (item === MENU.INSTRUCTIONS) ui.text({ title: "Instructions", text: INSTRUCTIONS });
     },
-    onBack: function () {
-      window.bridge.send(window.parent, { event: "stop" });
-    },
+    onBack: stop,
   });
 }
 
@@ -53,176 +81,7 @@ function openLevels() {
   });
 }
 
-function startGame() {
-  if (currentGame) {
-    currentGame.cleanup();
-  }
-
-  document.getElementById("screen-game").hidden = false;
-  var gameLevel = LEVELS[selectedLevel];
-  currentGame = new Sudoku({
-    level: selectedLevel,
-    size: gameLevel.size,
-    boxWidth: gameLevel.boxWidth,
-    boxHeight: gameLevel.boxHeight,
-  });
-}
-
-var Sudoku = function (config) {
-  // Game state
-  this.board = [];
-  this.solution = [];
-  this.userInput = [];
-  this.selectedCell = { row: 0, col: 0 };
-  this.moves = 0;
-  this.startTime = 0;
-  this.gameStarted = false;
-  this.puzzleNumber = 1;
-
-  // Level configuration
-  this.level = config.level;
-  this.size = config.size;
-  this.boxWidth = config.boxWidth;
-  this.boxHeight = config.boxHeight;
-
-  this.setup();
-};
-
-Sudoku.prototype.setup = function () {
-  this.newGame();
-};
-
-Sudoku.prototype.cleanup = function () {
-  this.gameStarted = false;
-};
-
-Sudoku.prototype.initializeArrays = function () {
-  this.board = [];
-  this.solution = [];
-  this.userInput = [];
-  for (var i = 0; i < this.size; i++) {
-    this.board[i] = [];
-    this.solution[i] = [];
-    this.userInput[i] = [];
-    for (var j = 0; j < this.size; j++) {
-      this.board[i][j] = 0;
-      this.solution[i][j] = 0;
-      this.userInput[i][j] = false;
-    }
-  }
-};
-
-Sudoku.prototype.setupGame = function () {
-  var gameBoard = document.getElementById("game");
-  gameBoard.innerHTML = "";
-  gameBoard.className = "level-" + LEVELS[this.level].name.toLowerCase();
-  gameBoard.style.gridTemplateColumns = "repeat(" + this.size + ", 1fr)";
-
-  for (var row = 0; row < this.size; row++) {
-    for (var col = 0; col < this.size; col++) {
-      var cell = document.createElement("div");
-      cell.className = "cell";
-      cell.setAttribute("data-row", row);
-      cell.setAttribute("data-col", col);
-      gameBoard.appendChild(cell);
-    }
-  }
-
-  this.updateDisplay();
-};
-
-Sudoku.prototype.newGame = function () {
-  this.initializeArrays();
-  this.setupGame();
-  this.generatePuzzle();
-  this.startTime = Date.now();
-  this.moves = 0;
-  this.gameStarted = true;
-  this.selectedCell = { row: 0, col: 0 };
-  this.updateDisplay();
-};
-
-Sudoku.prototype.generatePuzzle = function () {
-  // Generate base solution
-  this.generateBaseSolution();
-
-  // Copy solution to board and initialize userInput
-  for (var row = 0; row < this.size; row++) {
-    this.board[row] = this.solution[row].slice();
-    for (var col = 0; col < this.size; col++) {
-      this.userInput[row][col] = false;
-    }
-  }
-
-  // Calculate holes based on difficulty
-  var holes;
-  switch (this.level) {
-    case 0: // Easy
-    case 1: // Medium
-      holes = Math.floor(this.size * this.size * 0.55); // 55% empty
-      break;
-    case 2: // Hard
-      holes = Math.floor(this.size * this.size * 0.65); // 65% empty
-      break;
-  }
-
-  // Create array of all positions
-  var positions = [];
-  for (var r = 0; r < this.size; r++) {
-    for (var c = 0; c < this.size; c++) {
-      positions.push([r, c]);
-    }
-  }
-
-  this.shuffleArray(positions);
-
-  // Remove numbers one by one
-  for (var i = 0; i < holes && i < positions.length; i++) {
-    var pos = positions[i];
-    this.board[pos[0]][pos[1]] = 0;
-    this.userInput[pos[0]][pos[1]] = true;
-  }
-};
-
-Sudoku.prototype.generateBaseSolution = function () {
-  this.initializeArrays();
-  return this.fillRemaining(0, 0);
-};
-
-Sudoku.prototype.fillRemaining = function (row, col) {
-  // Move to next row when column reaches end
-  if (col >= this.size) {
-    row++;
-    col = 0;
-  }
-
-  // Successfully filled all cells
-  if (row >= this.size) {
-    return true;
-  }
-
-  // Try numbers 1-size for current cell
-  var numbers = [];
-  for (var value = 1; value <= this.size; value++) {
-    numbers.push(value);
-  }
-  this.shuffleArray(numbers);
-
-  for (var i = 0; i < numbers.length; i++) {
-    var currentNum = numbers[i];
-    if (this.isValidMove(row, col, currentNum, this.solution)) {
-      this.solution[row][col] = currentNum;
-      if (this.fillRemaining(row, col + 1)) {
-        return true;
-      }
-      this.solution[row][col] = 0;
-    }
-  }
-
-  return false;
-};
-
-Sudoku.prototype.shuffleArray = function (array) {
+function shuffle(array) {
   for (var i = array.length - 1; i > 0; i--) {
     var j = Math.floor(Math.random() * (i + 1));
     var temp = array[i];
@@ -230,198 +89,361 @@ Sudoku.prototype.shuffleArray = function (array) {
     array[j] = temp;
   }
   return array;
+}
+
+function range(from, to) {
+  var values = [];
+  for (var i = from; i <= to; i++) values.push(i);
+  return values;
+}
+
+/**
+ * @param {object} level One of LEVELS
+ * @param {number} number The puzzle's number in this run, shown beside the grid
+ */
+var Sudoku = function (level, number) {
+  this.level = level;
+  this.size = level.size;
+  this.number = number;
+  this.board = [];
+  this.fixed = [];
+  this.cursor = 0;
+  this.moves = 0;
+  this.elapsed = 0;
+  this.solved = false;
+
+  var gridSize = this.size * (level.cell + 1) + 1;
+  this.top = Math.floor((HEIGHT - gridSize) / 2);
+  this.left = this.top;
+  this.hudLeft = this.left + gridSize + 3;
+
+  this.generate();
+  this.cursor = this.fixed.indexOf(false);
 };
 
-Sudoku.prototype.isValidMove = function (row, col, num, board) {
-  // Check row
-  for (var r = 0; r < this.size; r++) {
-    if (board[row][r] === num) return false;
+/** Whether `num` can go at `index` without repeating in its row, column or box. */
+Sudoku.prototype.canPlace = function (board, index, num) {
+  var size = this.size;
+  var row = Math.floor(index / size);
+  var col = index % size;
+  var boxRow = row - (row % this.level.boxHeight);
+  var boxCol = col - (col % this.level.boxWidth);
+
+  for (var i = 0; i < size; i++) {
+    if (i !== col && board[row * size + i] === num) return false;
+    if (i !== row && board[i * size + col] === num) return false;
   }
-
-  // Check column
-  for (var c = 0; c < this.size; c++) {
-    if (board[c][col] === num) return false;
-  }
-
-  // Check box
-  var boxStartRow = Math.floor(row / this.boxHeight) * this.boxHeight;
-  var boxStartCol = Math.floor(col / this.boxWidth) * this.boxWidth;
-
-  for (var boxRow = 0; boxRow < this.boxHeight; boxRow++) {
-    for (var boxCol = 0; boxCol < this.boxWidth; boxCol++) {
-      if (board[boxStartRow + boxRow][boxStartCol + boxCol] === num)
-        return false;
+  for (var r = boxRow; r < boxRow + this.level.boxHeight; r++) {
+    for (var c = boxCol; c < boxCol + this.level.boxWidth; c++) {
+      if ((r !== row || c !== col) && board[r * size + c] === num) return false;
     }
   }
-
   return true;
 };
 
-Sudoku.prototype.handleGameKeys = function (key) {
-  if (!this.gameStarted) return;
+/** Fills the empty cells of `board` with a random solution, in place. */
+Sudoku.prototype.fill = function (board) {
+  var index = board.indexOf(0);
+  if (index === -1) return true;
 
-  var row = this.selectedCell.row;
-  var col = this.selectedCell.col;
-  var newRow = row;
-  var newCol = col;
-
-  if (key === "up") {
-    do {
-      newCol = (newCol - 1 + this.size) % this.size;
-      if (newCol === this.size - 1) {
-        newRow = (newRow - 1 + this.size) % this.size;
-      }
-    } while (
-      !this.userInput[newRow][newCol] &&
-      (newRow !== row || newCol !== col)
-    );
+  var nums = shuffle(range(1, this.size));
+  for (var i = 0; i < nums.length; i++) {
+    if (this.canPlace(board, index, nums[i])) {
+      board[index] = nums[i];
+      if (this.fill(board)) return true;
+    }
   }
-
-  if (key === "down") {
-    do {
-      newCol = (newCol + 1) % this.size;
-      if (newCol === 0) {
-        newRow = (newRow + 1) % this.size;
-      }
-    } while (
-      !this.userInput[newRow][newCol] &&
-      (newRow !== row || newCol !== col)
-    );
-  }
-
-  if (key === "clear") {
-    openMenu(MENU_ITEM.GAME);
-    return;
-  }
-
-  this.selectedCell.row = newRow;
-  this.selectedCell.col = newCol;
-  this.updateDisplay();
+  board[index] = 0;
+  return false;
 };
 
-Sudoku.prototype.handleGameNumKeys = function (key) {
-  if (!this.gameStarted || key > this.size || key === "*") return;
-
-  var row = this.selectedCell.row;
-  var col = this.selectedCell.col;
-
-  if (!this.userInput[row][col]) return;
-
-  if (key === "#") {
-    // reset the user input for the current puzzle
-    for (var i = 0; i < this.size; i++) {
-      for (var j = 0; j < this.size; j++) {
-        if (this.userInput[i][j]) {
-          this.board[i][j] = 0;
-        }
-      }
+/**
+ * Counts the solutions of `board`, stopping at `limit`. It always fills the empty cell with the
+ * fewest candidates first, which keeps a 9 x 9 count fast.
+ */
+Sudoku.prototype.countSolutions = function (board, limit) {
+  var best = -1;
+  var bestNums = null;
+  for (var index = 0; index < board.length; index++) {
+    if (board[index]) continue;
+    var nums = [];
+    for (var num = 1; num <= this.size; num++) {
+      if (this.canPlace(board, index, num)) nums.push(num);
     }
-    this.updateDisplay();
-    return;
+    if (!nums.length) return 0;
+    if (!bestNums || nums.length < bestNums.length) {
+      best = index;
+      bestNums = nums;
+    }
   }
+  if (best === -1) return 1;
 
-  if (key !== 0) {
-    this.moves++;
+  var count = 0;
+  for (var i = 0; i < bestNums.length && count < limit; i++) {
+    board[best] = bestNums[i];
+    count += this.countSolutions(board, limit - count);
   }
-  this.board[row][col] = key;
-  this.updateDisplay();
+  board[best] = 0;
+  return count;
 };
 
-Sudoku.prototype.formatTime = function (seconds) {
-  var minutes = Math.floor(seconds / 60);
-  seconds = seconds % 60;
-  return (
-    (minutes < 10 ? "0" : "") +
-    minutes +
-    ":" +
-    (seconds < 10 ? "0" : "") +
-    seconds
-  );
-};
-
-Sudoku.prototype.formatMoves = function (moves) {
-  return ("000" + moves).slice(-3);
-};
-
-Sudoku.prototype.updateDisplay = function () {
-  var self = this;
-  var cells = document.querySelectorAll(".cell");
-
-  cells.forEach(function (cell) {
-    var row = parseInt(cell.getAttribute("data-row"));
-    var col = parseInt(cell.getAttribute("data-col"));
-    var value = self.board[row][col];
-
-    cell.className = cell.className
-      .split(" ")
-      .filter(function (c) {
-        return c === "cell";
-      })
-      .join(" ");
-
-    if (row === self.selectedCell.row && col === self.selectedCell.col) {
-      cell.classList.add("selected");
-    }
-
-    if (self.userInput[row][col]) {
-      cell.classList.add("input");
-    }
-
-    if ((col + 1) % self.size === 0) {
-      cell.classList.add("right");
-    }
-
-    if ((row + 1) % self.size === 0) {
-      cell.classList.add("bottom");
-    }
-
-    if (value !== 0) {
-      cell.textContent = value;
-    } else {
-      cell.textContent = "";
-    }
+/** Makes a puzzle with one solution, so it never needs a guess. */
+Sudoku.prototype.generate = function () {
+  var cells = this.size * this.size;
+  var board = range(1, cells).map(function () {
+    return 0;
   });
+  this.fill(board);
 
-  if (this.gameStarted) {
-    var timeElapsed = Math.floor((Date.now() - this.startTime) / 1000);
-    document.querySelector(".timer").textContent = this.formatTime(timeElapsed);
-    document.querySelector(".moves").textContent = this.formatMoves(this.moves);
-    document.getElementById("level").textContent = this.puzzleNumber;
+  var holes = Math.floor(cells * this.level.holes);
+  var positions = shuffle(range(0, cells - 1));
+  for (var i = 0; i < positions.length && holes > 0; i++) {
+    var value = board[positions[i]];
+    board[positions[i]] = 0;
+    if (this.countSolutions(board, 2) === 1) holes--;
+    else board[positions[i]] = value;
+  }
 
-    this.checkWin();
+  this.board = board;
+  this.fixed = board.map(function (value) {
+    return value !== 0;
+  });
+};
+
+/** The grid follows the rules when it is full and no digit repeats. */
+Sudoku.prototype.isSolved = function () {
+  for (var i = 0; i < this.board.length; i++) {
+    if (!this.board[i] || !this.canPlace(this.board, i, this.board[i])) return false;
+  }
+  return true;
+};
+
+Sudoku.prototype.hasInput = function () {
+  var self = this;
+  return this.board.some(function (value, i) {
+    return value && !self.fixed[i];
+  });
+};
+
+/** Moves the cursor to the previous or next cell that can be filled. */
+Sudoku.prototype.moveCursor = function (step) {
+  var count = this.board.length;
+  var index = this.cursor;
+  do {
+    index = (index + step + count) % count;
+  } while (this.fixed[index] && index !== this.cursor);
+  this.cursor = index;
+};
+
+Sudoku.prototype.clearInput = function () {
+  for (var i = 0; i < this.board.length; i++) {
+    if (!this.fixed[i]) this.board[i] = 0;
   }
 };
 
-Sudoku.prototype.checkWin = function () {
-  if (!this.gameStarted) return;
+Sudoku.prototype.handleKey = function (key) {
+  if (key === "up") this.moveCursor(-1);
+  if (key === "down") this.moveCursor(1);
+  if (key === "clear") openMenu();
+};
 
-  var isComplete = true;
-  for (var row = 0; row < this.size; row++) {
-    for (var col = 0; col < this.size; col++) {
-      if (this.board[row][col] !== this.solution[row][col]) {
-        isComplete = false;
-        break;
-      }
+Sudoku.prototype.handleNum = function (key) {
+  var self = this;
+  if (key === "#") {
+    if (!this.hasInput()) return;
+    ui.confirm({
+      text: "Empty the grid?",
+      onDone: function (screen) {
+        screen.close();
+        self.clearInput();
+      },
+    });
+    return;
+  }
+  if (typeof key !== "number" || key > this.size || this.board[this.cursor] === key) return;
+
+  if (key !== 0) this.moves++;
+  this.board[this.cursor] = key;
+  if (this.isSolved()) this.finish();
+};
+
+Sudoku.prototype.finish = function () {
+  var self = this;
+  this.solved = true;
+  playAudio("solved");
+
+  // The solved grid stays on screen for a moment before the result covers it
+  setTimeout(function () {
+    sendGameOver();
+    ui.confirm({
+      text: "Solved!",
+      info: formatTime(self.elapsed) + ", " + self.moves + " moves",
+      action: "Next",
+      onDone: function (screen) {
+        screen.close();
+        currentGame = new Sudoku(self.level, self.number + 1);
+      },
+      onBack: function (screen) {
+        screen.close();
+        openMenu();
+      },
+    });
+  }, 800);
+};
+
+/** Counts the time while the grid is on screen and the phone's screen is on. */
+Sudoku.prototype.tick = function (ms) {
+  if (!this.solved && !ui.isOpen() && !document.body.classList.contains("inactive")) {
+    this.elapsed += ms;
+  }
+};
+
+Sudoku.prototype.cellX = function (col) {
+  return this.left + 1 + col * (this.level.cell + 1);
+};
+
+Sudoku.prototype.cellY = function (row) {
+  return this.top + 1 + row * (this.level.cell + 1);
+};
+
+/** Box edges are solid lines and the lines between cells are dotted, unless the level has dots. */
+Sudoku.prototype.drawLines = function () {
+  var size = this.size;
+  var gridSize = size * (this.level.cell + 1) + 1;
+
+  for (var i = 0; i <= size; i++) {
+    var offset = i * (this.level.cell + 1);
+    var solidRow = i % this.level.boxHeight === 0;
+    var solidCol = i % this.level.boxWidth === 0;
+    var dotted = !this.level.dots;
+    for (var p = 0; p < gridSize; p++) {
+      var dot = dotted && p % 2 === 0;
+      if (solidRow || dot) ctx.fillRect(this.left + p, this.top + offset, 1, 1);
+      if (solidCol || dot) ctx.fillRect(this.left + offset, this.top + p, 1, 1);
     }
-    if (!isComplete) break;
   }
+};
 
-  if (isComplete) {
-    this.gameStarted = false;
-    this.puzzleNumber++;
-    this.newGame();
+/** Draws `text` in the digit font, `scale` times its size. */
+function drawDigits(text, x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  lcd.drawText(ctx, text, 0, 0);
+  ctx.restore();
+}
+
+/**
+ * Givens are dark with a clear digit, as is the cursor's cell on every other blink. A dark cell
+ * covers the lines around it too, so dark cells side by side join into one dark area, as a selected
+ * row does on the phone, rather than showing a row of dots between them.
+ */
+Sudoku.prototype.drawCells = function (blinkOn) {
+  var cell = this.level.cell;
+  var scale = this.level.scale;
+  var digitX = Math.floor((cell - 3 * scale) / 2);
+  var digitY = Math.floor((cell - 5 * scale) / 2);
+
+  for (var i = 0; i < this.board.length; i++) {
+    var x = this.cellX(i % this.size);
+    var y = this.cellY(Math.floor(i / this.size));
+    var dark = this.fixed[i] || (i === this.cursor && blinkOn && !this.solved);
+
+    if (dark) ctx.fillRect(x - 1, y - 1, cell + 2, cell + 2);
+    if (!this.board[i]) {
+      if (this.level.dots && !dark) ctx.fillRect(x + digitX + 1, y + 2, 1, 1);
+      continue;
+    }
+    ctx.globalCompositeOperation = dark ? "destination-out" : "source-over";
+    drawDigits(this.board[i], x + digitX, y + digitY, scale);
+    ctx.globalCompositeOperation = "source-over";
   }
+};
+
+function formatTime(ms) {
+  var seconds = Math.floor(ms / 1000);
+  var minutes = Math.min(99, Math.floor(seconds / 60));
+  seconds = seconds % 60;
+  return (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
+}
+
+/** A 1-pixel frame around a `width` x 9 box, with its top left at `x`, `y`. */
+function drawFrame(x, y, width) {
+  ctx.fillRect(x, y, width, 1);
+  ctx.fillRect(x, y + 8, width, 1);
+  ctx.fillRect(x, y + 1, 1, 7);
+  ctx.fillRect(x + width - 1, y + 1, 1, 7);
+}
+
+/** The puzzle's number, the time in a frame and the moves in a frame, down the right side. */
+Sudoku.prototype.drawHud = function () {
+  var width = WIDTH - this.hudLeft;
+  var frameWidth = 21;
+  var frameX = this.hudLeft + Math.floor((width - frameWidth) / 2);
+  var number = String(this.number);
+  var numberWidth = 5 + 2 + lcd.textWidth(number);
+  var y = Math.floor((HEIGHT - 30) / 2);
+
+  var numberX = this.hudLeft + Math.floor((width - numberWidth) / 2);
+  lcd.drawPixels(ctx, HASH, numberX, y);
+  lcd.drawText(ctx, number, numberX + 7, y);
+
+  var time = formatTime(this.elapsed).split(":");
+  drawFrame(frameX, y + 9, frameWidth);
+  lcd.drawText(ctx, time[0], frameX + 2, y + 11);
+  lcd.drawPixels(ctx, COLON, frameX + 10, y + 12);
+  lcd.drawPixels(ctx, COLON, frameX + 10, y + 14);
+  lcd.drawText(ctx, time[1], frameX + 12, y + 11);
+
+  var moves = ("000" + Math.min(999, this.moves)).slice(-3);
+  drawFrame(frameX, y + 21, frameWidth);
+  lcd.drawText(ctx, moves, frameX + 5, y + 23);
+};
+
+Sudoku.prototype.draw = function (blinkOn) {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  this.drawLines();
+  this.drawCells(blinkOn);
+  this.drawHud();
+  lcd.inkCanvas(ctx);
 };
 
 // The menu screens take the keys while they are open, so these only run during a game.
 function handleKeypress(key) {
-  if (currentGame) currentGame.handleGameKeys(key);
+  if (currentGame && !currentGame.solved) currentGame.handleKey(key);
 }
 
 function handleNumpress(key) {
-  if (currentGame) currentGame.handleGameNumKeys(key);
+  if (currentGame && !currentGame.solved) currentGame.handleNum(key);
 }
 
-openMenu(MENU_ITEM.GAME);
-window.bridge.on("keypress", handleKeypress);
-window.bridge.on("numpress", handleNumpress);
+// One loop draws the blink and the time. Drawing the cursor dark at once after a key press keeps it
+// visible while it moves.
+var lastTick = Date.now();
+var blinkStart = lastTick;
+setInterval(function () {
+  var now = Date.now();
+  if (currentGame) {
+    currentGame.tick(now - lastTick);
+    currentGame.draw(Math.floor((now - blinkStart) / BLINK_MS) % 2 === 0);
+  }
+  lastTick = now;
+}, 50);
+
+function restartBlink() {
+  blinkStart = Date.now();
+}
+
+openMenu();
+window.bridge.on("keypress", function (key) {
+  restartBlink();
+  handleKeypress(key);
+});
+window.bridge.on("numpress", function (key) {
+  restartBlink();
+  handleNumpress(key);
+});
+window.bridge.send(window.parent, {
+  event: "loadAudio",
+  data: [location.origin + "/sudoku/audio/solved.mp3"],
+});
